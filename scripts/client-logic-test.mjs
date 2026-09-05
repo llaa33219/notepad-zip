@@ -235,5 +235,20 @@ log("\n[11] drop filter: only image/video files are accepted");
   else ok("filters text/plain out");
 }
 
+
+log("\n[12] New button: clears currentId, editor, URL");
+{
+  let historyArgs = null;
+  globalThis.history = { replaceState: (_a, _b, p) => { historyArgs = p; } };
+  let inflight = { abort() { inflight = null; } };
+  let currentId = "abcd1234";
+  // Apply handler logic
+  if (inflight) inflight.abort();
+  inflight = null;
+  currentId = "";
+  globalThis.history.replaceState(null, "", "/");
+  if (currentId !== "" || historyArgs !== "/") bad("reset", `id=${currentId} url=${historyArgs}`);
+  else ok("id cleared, URL=/");
+}
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);

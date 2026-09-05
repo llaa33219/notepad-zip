@@ -16,7 +16,7 @@ export interface Env {
 const NOTE_ID_RE = /^[a-z0-9]{4,32}$/;
 const IMG_KEY_RE = /^img_[a-zA-Z0-9_-]{8,64}\.[a-z0-9]{1,8}$/;
 
-const MAX_NOTE_BYTES = 256 * 1024;      // 256 KiB per note
+const MAX_NOTE_BYTES = 8 * 1024 * 1024; // 8 MiB per note (well below 25 MiB KV cap)
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024; // 10 MiB per image
 
 // image/* + video/* + svg

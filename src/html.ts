@@ -93,6 +93,7 @@ export function htmlShell({ id, origin }: Vars): string {
     <div class="toolbar">
       <button id="btn-copy" type="button">Copy</button>
       <button id="btn-zip" type="button">Copy ZIP link</button>
+      <button id="btn-new" type="button">New</button>
       <span class="status" id="status">ready</span>
       <span class="spacer"></span>
       <span class="status" id="url"></span>

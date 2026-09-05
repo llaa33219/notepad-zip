@@ -11,6 +11,7 @@ export default function run() {
   const urlEl = document.getElementById("url");
   const copyBtn = document.getElementById("btn-copy");
   const zipBtn = document.getElementById("btn-zip");
+  const newBtn = document.getElementById("btn-new");
 
   const ID_LEN = 8;
   const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -326,6 +327,22 @@ export default function run() {
         );
       } catch {}
     }
+  });
+
+  // New: drop the current note, generate a fresh editor. If the user
+  // types anything, a new id is created on the first input. We don't
+  // confirm — work stays in the editor and saving it first is unnecessary
+  // since clicking New is an explicit reset.
+  newBtn.addEventListener("click", () => {
+    if (saveTimer != null) { clearTimeout(saveTimer); saveTimer = null; }
+    inflight?.abort();
+    inflight = null;
+    pendingFlush = false;
+    currentId = "";
+    editor.innerHTML = "";
+    urlEl.textContent = "";
+    history.replaceState(null, "", "/");
+    setStatus("ready");
   });
 
   zipBtn.addEventListener("click", async () => {

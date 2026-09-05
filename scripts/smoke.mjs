@@ -165,9 +165,9 @@ log("\n[13] PUT missing html -> 400");
   else ok("rejected");
 }
 
-log("\n[14] PUT html > 256 KiB -> 400");
+log("\n[14] PUT html > 8 MiB -> 400");
 {
-  const big = "<p>" + "a".repeat(260 * 1024) + "</p>";
+  const big = "<p>" + "a".repeat(9 * 1024 * 1024) + "</p>";
   const r = await call("PUT", "/api/note/bigtest", JSON.stringify({ html: big }), { "content-type": "application/json" });
   if (r.status !== 500 && r.status !== 400) bad("limit", r.status);
   else ok("oversized rejected");
@@ -263,15 +263,15 @@ log("\n[21] PUT /api/note/:id/zip -> 405");
 }
 
 
-log("\n[22] PUT note with 300 KiB UTF-8 bytes -> 500 (rejected)");
+log("\n[22] PUT note with 9.6 MiB UTF-8 bytes -> 400 (rejected at 8 MiB cap)");
 {
-  // 80k repetitions of a 4-byte sequence => 320 KiB UTF-8 bytes, but only
-  // 80k characters so html.length (UTF-16 units) < 256KiB limit. Old code
-  // accepted; new code measures bytes correctly.
-  const html = "<p>" + "\uac00\ub098\ub2e4\ub2e4".repeat(80000) + "</p>";
+  // Each \uac00 encodes as 3 UTF-8 bytes. 3.2M reps => ~9.6 MiB bytes,
+  // while html.length (UTF-16 units) is only ~3.2M chars so it would slip
+  // past the character-only check.
+  const html = "<p>" + "\uac00".repeat(3_200_000) + "</p>";
   const r = await call("PUT", "/api/note/utf8big", JSON.stringify({ html }), { "content-type": "application/json" });
-  if (r.status !== 500 && r.status !== 400) bad("utf8 byte limit", r.status);
-  else ok(`rejected (status ${r.status})`);
+  if (r.status !== 400 && r.status !== 500) bad("utf8 byte limit", r.status);
+  else ok(`rejected at ${r.status}`);
 }
 
 log("\n[23] PUT note within limit -> 200");
@@ -287,6 +287,23 @@ log("\n[24] POST /api/upload with malformed multipart -> 400 not 500");
   const r = await call("POST", "/api/upload", "garbage", { "content-type": "multipart/form-data; boundary=xxx" });
   if (r.status !== 400) bad("400 expected", r.status);
   else ok("rejected with 400, not 500");
+}
+
+
+log("\n[25] PUT 200 KiB plain text note -> 200 (within enlarged limit)");
+{
+  const html = "<p>" + "x".repeat(200 * 1024) + "</p>";  // 200 KiB chars
+  const r = await call("PUT", "/api/note/big200", JSON.stringify({ html }), { "content-type": "application/json" });
+  if (r.status !== 200) bad("200 kiB plain", r.status);
+  else ok("accepted");
+}
+
+log("\n[26] PUT 5 MiB plain text note -> 200 (within 25 MiB KV cap)");
+{
+  const html = "<p>" + "x".repeat(5 * 1024 * 1024) + "</p>";
+  const r = await call("PUT", "/api/note/big5m", JSON.stringify({ html }), { "content-type": "application/json" });
+  if (r.status !== 200) bad("5 MiB plain", r.status);
+  else ok("accepted");
 }
 
 log(`\n=== ${pass} passed, ${fail} failed ===`);
