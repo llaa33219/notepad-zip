@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "notepad-zip",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // 1) Provision KV:   npx wrangler kv namespace create NOTES
+  // 2) Provision R2:   npx wrangler r2 bucket create notepad-images
+  // 3) Paste ids/names below.
+  "kv_namespaces": [
+    { "binding": "NOTES", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+  "r2_buckets": [
+    { "binding": "IMAGES", "bucket_name": "notepad-images", "preview_bucket_name": "notepad-images-preview" }
+  ],
+
+  "vars": {
+    // Set after first deploy. Example: "https://notepad-zip.<sub>.workers.dev"
+    "PUBLIC_ORIGIN": "http://localhost:8787"
+  }
+}
