@@ -1,3 +1,4 @@
+.miniouto/
 node_modules/
 .wrangler/
 dist/
