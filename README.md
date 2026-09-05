@@ -10,7 +10,7 @@ A minimal notepad running on Cloudflare Workers. Text in **Workers KV**, media (
 - 첫 입력이 들어오면 클라이언트에서 **8자 base36 ID**를 생성하고 `history.replaceState`으로 URL이 `/{id}`로 바뀝니다 (페이지 새로고침 없음).
 - Paste any image / video / SVG and it uploads to R2 immediately, replaced inline with `<img>` (max 400px wide) or `<video controls>`. A semi-transparent placeholder shows during upload.
 - **Copy** button: plain text to clipboard. Images and videos both serialize as `[https://…/img/img_xxx.png]`. Block elements get trailing newlines.
-- **Copy ZIP link** button: copies `https://<host>/api/note/{id}/zip` to clipboard. Paste it anywhere to download `note-{id}.zip` containing `note.txt` plus every referenced media file.
+- **Copy ZIP link** button: copies `https://<host>/api/note/{id}/zip` to clipboard. Paste it anywhere to download `note-{id}.zip` containing `note.txt` plus every referenced media file. Inside the archive, `note.txt` references images as `[files/img_xxx.png]` so the relative paths resolve to actual files when the archive is unpacked.
 - **New** button: opens a fresh tab at the root URL. The current tab is left intact, so accidental clicks cost nothing.
 - Notes up to **8 MiB** (UTF-8 bytes) are accepted — well under the 25 MiB KV value cap.
 - 같은 URL을 다시 열면 저장된 HTML이 그대로 복원됩니다.

@@ -82,6 +82,72 @@ log("\n[5] buildZip round-trip via unzip(1)");
 }
 
 // --- extractMediaUrls --------------------------------------------------
+log("\n[5b] rewriteAbsoluteUrlsToRelative");
+{
+  function rewrite(text, fetchedKeys, origin) {
+    if (fetchedKeys.size === 0) return text;
+    return text.replace(/\[((?:https?:\/\/[^\]\s]+|\/?img\/[A-Za-z0-9._-]+))\]/g, (full, url) => {
+      try {
+        let abs;
+        if (/^https?:\/\//i.test(url)) {
+          const u = new URL(url);
+          if (u.origin !== origin) return full;  // cross-origin -> leave alone
+          abs = u.toString();
+        } else {
+          abs = new URL(url, origin).toString();
+        }
+        const u = new URL(abs);
+        const m = u.pathname.match(/^\/img\/([A-Za-z0-9._-]+)$/);
+        if (!m) return full;
+        if (!fetchedKeys.has(m[1])) return full;
+        return `[files/${m[1]}]`;
+      } catch { return full; }
+    });
+  }
+  const fetched = new Set(["img_a.png", "img_b.png"]);
+  const input = "see [https://notepad.blp.sh/img/img_a.png] and [/img/img_b.png] and [https://other/img/img_a.png] and [https://notepad.blp.sh/img/img_x.png]";
+  const got = rewrite(input, fetched, "https://notepad.blp.sh");
+  const want = "see [files/img_a.png] and [files/img_b.png] and [https://other/img/img_a.png] and [https://notepad.blp.sh/img/img_x.png]";
+  if (got !== want) bad("rewrite", JSON.stringify(got));
+  else ok("rewrites same-origin URLs to files/, leaves others alone");
+}
+
+log("\n[5c] end-to-end: ZIP with rewritten note.txt");
+{
+  // Build plain text as the worker would (with rewriting) and pack it into
+  // a ZIP, then verify with unzip(1).
+  const html = `<p>see</p><img src="/img/foo.png"><br><img src="https://notepad.blp.sh/img/bar.png">`;
+  const plainRaw = "see [https://notepad.blp.sh/img/foo.png]\nand [files/bar.png]";  // simulated
+  // Actually the worker's htmlToPlainText is in src/index.ts (TS), not exported
+  // from zip.mjs. Here we just check that the rewrite + buildZip pair works.
+  const fetchedKeys = new Set(["foo.png", "bar.png"]);
+  const origin = "https://notepad.blp.sh";
+  const rewrite = (text) => text.replace(/\[((?:https?:\/\/[^\]\s]+|\/?img\/[A-Za-z0-9._-]+))\]/g, (full, url) => {
+    let abs;
+    if (/^https?:\/\//i.test(url)) abs = new URL(url).toString();
+    else abs = new URL(url, origin).toString();
+    const u = new URL(abs);
+    const m = u.pathname.match(/^\/img\/([A-Za-z0-9._-]+)$/);
+    if (!m || !fetchedKeys.has(m[1])) return full;
+    return `[files/${m[1]}]`;
+  });
+  const plain = rewrite(plainRaw);
+  const png = new Uint8Array([1, 2, 3, 4, 5]);
+  const z = buildZip([
+    { name: "note.txt", data: new TextEncoder().encode(plain) },
+    { name: "files/foo.png", data: png },
+    { name: "files/bar.png", data: png },
+  ]);
+  const tmp = "/tmp/notepad-relative.zip";
+  fs.writeFileSync(tmp, z);
+  let out;
+  try {
+    out = execSync(`unzip -p ${tmp} note.txt`, { encoding: "buffer" });
+  } catch (e) { bad("unzip note.txt", e.message); out = null; }
+  if (out && out.toString() === "see [files/foo.png]\nand [files/bar.png]") ok("note.txt uses files/<key>");
+  else if (out) bad("note.txt content", JSON.stringify(out.toString()));
+}
+
 log("\n[6] extractMediaUrls from HTML");
 {
   const html = `<p>hello</p><img src="/img/foo.png"><br><img src='https://x.com/img/foo.png'><video controls src="/img/v.mp4"></video><img src="/img/foo.png">`;
@@ -94,10 +160,14 @@ log("\n[6] extractMediaUrls from HTML");
 // --- resolveUrl -------------------------------------------------------
 log("\n[7] resolveUrl");
 {
+  if (resolveUrl("http://h/img/x.png", "http://h") !== "http://h/img/x.png") bad("same-origin full", resolveUrl("http://h/img/x.png","http://h"));
+  else ok("same-origin absolute URL passes");
   if (resolveUrl("/img/x.png", "http://h") !== "http://h/img/x.png") bad("absolute", resolveUrl("/img/x.png","http://h"));
-  else ok("absolute path");
-  if (resolveUrl("https://x.com/a", "http://h") !== "https://x.com/a") bad("full", resolveUrl("https://x.com/a","http://h"));
-  else ok("full URL passthrough");
+  else ok("root-relative path");
+  // Cross-origin URL is now filtered out (returns null) so the caller
+  // can leave it untouched in plain text.
+  if (resolveUrl("https://x.com/a", "http://h") !== null) bad("cross-origin", resolveUrl("https://x.com/a","http://h"));
+  else ok("cross-origin -> null");
   if (resolveUrl("not a url", "http://h") !== null) bad("invalid", resolveUrl("not a url","http://h"));
   else ok("invalid -> null");
 }

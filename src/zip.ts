@@ -165,10 +165,16 @@ export function extractMediaUrls(html: string): string[] {
   return out.filter((u) => (seen.has(u) ? false : (seen.add(u), true)));
 }
 
-// Resolve a possibly-relative URL against an origin.
+// Resolve a possibly-relative URL against an origin. Only same-origin
+// absolute URLs and root-relative paths return a value; other-origin
+// absolute URLs return null so callers can leave them untouched.
 export function resolveUrl(url: string, origin: string): string | null {
   try {
-    if (/^https?:\/\//i.test(url)) return new URL(url).toString();
+    if (/^https?:\/\//i.test(url)) {
+      const u = new URL(url);
+      if (u.origin === origin) return u.toString();
+      return null;
+    }
     if (url.startsWith("/")) return new URL(url, origin).toString();
     return null;
   } catch { return null; }

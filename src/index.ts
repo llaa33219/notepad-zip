@@ -148,19 +148,15 @@ async function buildNoteZip(req: Request, env: Env, id: string): Promise<Respons
   const html = await readNote(env, id);
   if (html == null) return notFound();
 
-  // Plain text representation. We do the same walk the client does for copy.
-  const plain = htmlToPlainText(html);
-
-  // Collect media URLs and fetch from R2.
+  // Collect media URLs and fetch from R2. We need the deduped key list
+  // *before* serializing to plain text so we can rewrite absolute image
+  // URLs to relative "files/<key>" paths inside the archive.
   const origin = publicOrigin(req, env);
   const urls = extractMediaUrls(html);
   const fetched: { name: string; data: Uint8Array }[] = [];
   const seenKeys = new Set<string>();
   const errors: string[] = [];
 
-  // We process sequentially to avoid hammering R2 with concurrent reads for
-  // very large notes. Workers have generous subrequest limits, but order is
-  // nicer for the user (and easier to debug).
   for (let i = 0; i < urls.length; i++) {
     const abs = resolveUrl(urls[i], origin);
     if (!abs) continue;
@@ -172,9 +168,32 @@ async function buildNoteZip(req: Request, env: Env, id: string): Promise<Respons
     seenKeys.add(key);
     const obj = await env.IMAGES.get(key);
     if (!obj) { errors.push(key); continue; }
-    // Read into bytes. obj.body is a ReadableStream; collect via Response.
     const buf = await new Response(obj.body).arrayBuffer();
     fetched.push({ name: key, data: new Uint8Array(buf) });
+  }
+
+  // Plain text representation. Same walk as the client\'s copy button.
+  let plain = htmlToPlainText(html);
+
+  // Rewrite media URLs to relative paths inside the archive so note.txt
+  // references actual files by their ZIP entry name. We only do this for
+  // keys that were actually fetched (and thus present in files/).
+  const fetchedKeys = new Set(fetched.map((f) => f.name));
+  if (fetchedKeys.size > 0) {
+    plain = plain.replace(/\[((?:https?:\/\/[^\]\s]+|\/?img\/[A-Za-z0-9._-]+))\]/g, (full, url) => {
+      try {
+        const abs = resolveUrl(url, origin);
+        if (!abs) return full;
+        const u = new URL(abs);
+        const m = u.pathname.match(/^\/img\/([A-Za-z0-9._-]+)$/);
+        if (!m) return full;
+        const key = m[1];
+        if (!fetchedKeys.has(key)) return full;
+        return `[files/${key}]`;
+      } catch {
+        return full;
+      }
+    });
   }
 
   const entries = [
