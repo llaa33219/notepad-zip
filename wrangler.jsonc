@@ -6,18 +6,32 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
-  // 1) Provision KV:   npx wrangler kv namespace create NOTES
-  // 2) Provision R2:   npx wrangler r2 bucket create notepad-images
-  // 3) Paste ids/names below.
-  "kv_namespaces": [
-    { "binding": "NOTES", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
-  ],
-  "r2_buckets": [
-    { "binding": "IMAGES", "bucket_name": "notepad-images", "preview_bucket_name": "notepad-images-preview" }
-  ],
+  // --- Bindings (KV / R2) -------------------------------------------------
+  //
+  // Bindings are intentionally NOT committed to this file. They are
+  // configured through the Cloudflare dashboard (Workers & Pages -> your
+  // worker -> Settings -> Bindings) instead, so that secrets like the KV
+  // namespace ID and any R2 credentials never end up in git history.
+  //
+  // To set them up in the dashboard:
+  //   1. Open https://dash.cloudflare.com -> Workers & Pages -> notepad-zip
+  //   2. Settings -> Bindings -> Add binding
+  //        KV namespace: binding name "NOTES", pick the namespace you created
+  //                      with `wrangler kv namespace create NOTES`
+  //        R2 bucket:    binding name "IMAGES", bucket "notepad-images"
+  //   3. Save and redeploy (or just `wrangler deploy` — UI bindings take
+  //      precedence over any inline declarations).
+  //
+  // If you'd rather keep config in-repo, run `wrangler secret put ...` or
+  // use a per-environment file like `wrangler.production.jsonc` (not
+  // tracked) and pass `--config wrangler.production.jsonc` on deploy.
 
   "vars": {
-    // Set after first deploy. Example: "https://notepad-zip.<sub>.workers.dev"
+    // Public origin used to build absolute image URLs in copy/paste.
+    // Override in the dashboard (Settings -> Variables -> Environment
+    // Variables) once the worker is deployed, e.g.
+    //   PUBLIC_ORIGIN = "https://notepad-zip.<your-subdomain>.workers.dev"
+    // Until set, the worker falls back to the request's own URL origin.
     "PUBLIC_ORIGIN": "http://localhost:8787"
   }
 }

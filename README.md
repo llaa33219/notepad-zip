@@ -37,30 +37,42 @@ npm run typecheck
 
 ## 배포
 
-1. Cloudflare에 로그인 (최초 1회)
-   ```bash
-   npx wrangler login
-   ```
-2. KV 네임스페이스 생성
-   ```bash
-   npx wrangler kv namespace create NOTES
-   npx wrangler kv namespace create NOTES --preview   # dev용 (선택)
-   ```
-   출력되는 `id`를 `wrangler.jsonc`의 `kv_namespaces[0].id`에 붙여넣습니다.
+바인딩(KV / R2)은 **Cloudflare 대시보드에서 설정**합니다. `wrangler.jsonc`에는 일부러 binding 정보를 적지 않습니다 — KV namespace ID 같은 값이 git에 노출되지 않게 하기 위함입니다.
 
-3. R2 버킷 생성
-   ```bash
-   npx wrangler r2 bucket create notepad-images
-   ```
-   `wrangler.jsonc`의 `r2_buckets[0].bucket_name`이 `notepad-images`인지 확인합니다.
+### 1. Cloudflare 로그인 (최초 1회)
 
-4. (선택) `vars.PUBLIC_ORIGIN`을 실제 도메인으로 변경. 비워 두면 worker가 `request.url`을 사용합니다.
+```bash
+npx wrangler login
+```
 
-5. 배포
-   ```bash
-   npm run deploy
-   ```
-   출력되는 `*.workers.dev` URL이 서비스 주소입니다. 커스텀 도메인을 붙이려면 Cloudflare 대시보드에서 라우트를 추가하면 됩니다.
+### 2. KV / R2 리소스 생성 (CLI에서 1회만)
+
+```bash
+npx wrangler kv namespace create NOTES
+npx wrangler r2 bucket create notepad-images
+```
+
+생성된 namespace와 bucket의 **이름**(ID 아님)만 기억하면 됩니다. namespace ID는 다음 단계에서 대시보드가 자동으로 채워줍니다.
+
+### 3. 대시보드에서 바인딩 추가
+
+1. <https://dash.cloudflare.com> → **Workers & Pages** → `notepad-zip` 선택
+2. **Settings** → **Bindings** → **Add binding** 클릭하여 두 개 추가:
+   - **KV namespace**: Variable name = `NOTES`, KV namespace = 위에서 만든 것 선택
+   - **R2 bucket**: Variable name = `IMAGES`, R2 bucket = `notepad-images` 선택
+3. 같은 페이지의 **Variables and Secrets** 섹션에서 (선택) `PUBLIC_ORIGIN` 추가 — 실제 도메인 (예: `https://notepad-zip.<sub>.workers.dev`). 비워 두면 worker가 `request.url`을 사용합니다.
+
+### 4. 배포
+
+```bash
+npm run deploy
+```
+
+`*.workers.dev` URL이 서비스 주소입니다. 커스텀 도메인을 붙이려면 같은 페이지의 **Triggers** 탭에서 라우트를 추가하면 됩니다.
+
+### 설정 변경 후 재배포
+
+바인딩이나 환경변수를 바꿨다면 `npm run deploy`만 다시 돌리면 됩니다 — `wrangler.jsonc`에 binding 정보가 없으니 동기화 걱정이 없습니다.
 
 ## 설계 메모
 
