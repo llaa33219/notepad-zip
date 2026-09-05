@@ -162,8 +162,17 @@ export default function run() {
   async function uploadFile(file) {
     const fd = new FormData();
     fd.append("file", file, file.name || "paste");
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
-    if (!res.ok) throw new Error(`upload ${res.status}`);
+    let res;
+    try {
+      res = await fetch("/api/upload", { method: "POST", body: fd });
+    } catch (e) {
+      throw new Error(`network: ${(e && e.message) || e}`);
+    }
+    if (!res.ok) {
+      let body = "";
+      try { body = await res.text(); } catch {}
+      throw new Error(`upload ${res.status}: ${body || res.statusText}`);
+    }
     const { url } = await res.json();
     return url;
   }
@@ -182,9 +191,9 @@ export default function run() {
       placeholder.src = url;
       scheduleSave();
       return placeholder;
-    } catch {
+    } catch (e) {
       placeholder.setAttribute("data-failed", "1");
-      setStatus("Upload failed");
+      setStatus(`Upload failed: ${(e && e.message) || e}`);
       return null;
     }
   }
