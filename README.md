@@ -37,30 +37,25 @@ npm run typecheck
 
 ## 배포
 
-바인딩(KV / R2)은 **Cloudflare 대시보드에서 설정**합니다. `wrangler.jsonc`에는 일부러 binding 정보를 적지 않습니다 — KV namespace ID 같은 값이 git에 노출되지 않게 하기 위함입니다.
-
 ### 1. Cloudflare 로그인 (최초 1회)
 
 ```bash
 npx wrangler login
 ```
 
-### 2. KV / R2 리소스 생성 (CLI에서 1회만)
+### 2. KV / R2 리소스 생성
 
 ```bash
 npx wrangler kv namespace create NOTES
 npx wrangler r2 bucket create notepad-images
+npx wrangler r2 bucket create notepad-images-preview   # wrangler dev 용
 ```
 
-생성된 namespace와 bucket의 **이름**(ID 아님)만 기억하면 됩니다. namespace ID는 다음 단계에서 대시보드가 자동으로 채워줍니다.
+`wrangler kv namespace create NOTES`가 출력하는 `id`를 `wrangler.jsonc`의 `kv_namespaces[0].id`에 붙여넣습니다. R2 버킷 이름은 기본값(`notepad-images`, `notepad-images-preview`) 그대로 두면 됩니다.
 
-### 3. 대시보드에서 바인딩 추가
+### 3. `vars.PUBLIC_ORIGIN` 확인
 
-1. <https://dash.cloudflare.com> → **Workers & Pages** → `notepad-zip` 선택
-2. **Settings** → **Bindings** → **Add binding** 클릭하여 두 개 추가:
-   - **KV namespace**: Variable name = `NOTES`, KV namespace = 위에서 만든 것 선택
-   - **R2 bucket**: Variable name = `IMAGES`, R2 bucket = `notepad-images` 선택
-3. 같은 페이지의 **Variables and Secrets** 섹션에서 (선택) `PUBLIC_ORIGIN` 추가 — 실제 도메인 (예: `https://notepad-zip.<sub>.workers.dev`). 비워 두면 worker가 `request.url`을 사용합니다.
+기본값은 `https://notepad.blp.sh` (이 repo의 실제 도메인)입니다. 다른 도메인으로 배포한다면 `wrangler.jsonc`의 `vars.PUBLIC_ORIGIN`을 그 주소로 바꾸세요. 비워 두면 worker가 `request.url`을 그대로 사용합니다.
 
 ### 4. 배포
 
@@ -68,11 +63,11 @@ npx wrangler r2 bucket create notepad-images
 npm run deploy
 ```
 
-`*.workers.dev` URL이 서비스 주소입니다. 커스텀 도메인을 붙이려면 같은 페이지의 **Triggers** 탭에서 라우트를 추가하면 됩니다.
+이 명령이 끝나면 KV / R2 바인딩이 worker 코드에 같이 묶여서 올라갑니다 — 대시보드에서 따로 binding 추가할 필요 없습니다.
 
-### 설정 변경 후 재배포
+`*.workers.dev` URL이 서비스 주소입니다. 커스텀 도메인을 붙이려면 Cloudflare 대시보드에서 **Workers & Pages → notepad-zip → Triggers → Add route**로 추가하면 됩니다.
 
-바인딩이나 환경변수를 바꿨다면 `npm run deploy`만 다시 돌리면 됩니다 — `wrangler.jsonc`에 binding 정보가 없으니 동기화 걱정이 없습니다.
+> **왜 binding을 다시 inline으로 뒀나** — 처음엔 KV namespace ID가 git에 노출되지 않게 대시보드 binding만 쓰도록 했었는데, 그러면 binding 추가 *후에* `npm run deploy`를 한 번 더 돌려야 worker에 반영됩니다. 그 단계를 깜빡하면 PUT이 500으로 죽습니다. 본인만 쓰는 1인용 메모장이라 보안 이득이 크지 않고, inline으로 두는 편이 *deploy 한 번이면 끝*이라 운영이 단순해집니다. 공유 도메인 / 다수 협업자가 노트 내용을 보면 안 되는 상황이면 다시 dashboard-only로 빼는 게 맞습니다.
 
 ## 설계 메모
 

@@ -7,32 +7,25 @@
   "observability": { "enabled": true },
   "keep_names": false,
 
-  // --- Bindings (KV / R2) -------------------------------------------------
-  //
-  // Bindings are intentionally NOT committed to this file. They are
-  // configured through the Cloudflare dashboard (Workers & Pages -> your
-  // worker -> Settings -> Bindings) instead, so that secrets like the KV
-  // namespace ID and any R2 credentials never end up in git history.
-  //
-  // To set them up in the dashboard:
-  //   1. Open https://dash.cloudflare.com -> Workers & Pages -> notepad-zip
-  //   2. Settings -> Bindings -> Add binding
-  //        KV namespace: binding name "NOTES", pick the namespace you created
-  //                      with `wrangler kv namespace create NOTES`
-  //        R2 bucket:    binding name "IMAGES", bucket "notepad-images"
-  //   3. Save and redeploy (or just `wrangler deploy` — UI bindings take
-  //      precedence over any inline declarations).
-  //
-  // If you'd rather keep config in-repo, run `wrangler secret put ...` or
-  // use a per-environment file like `wrangler.production.jsonc` (not
-  // tracked) and pass `--config wrangler.production.jsonc` on deploy.
+  // KV namespace:   npx wrangler kv namespace create NOTES
+  // R2 bucket:       npx wrangler r2 bucket create notepad-images
+  // R2 preview used by `wrangler dev` locally; create with
+  //                  npx wrangler r2 bucket create notepad-images-preview
+  "kv_namespaces": [
+    { "binding": "NOTES", "id": "22ce769c6b5649e2af7fadb037c3e0e9" }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "IMAGES",
+      "bucket_name": "notepad-images",
+      "preview_bucket_name": "notepad-images-preview"
+    }
+  ],
 
   "vars": {
-    // Public origin used to build absolute image URLs in copy/paste.
-    // Override in the dashboard (Settings -> Variables -> Environment
-    // Variables) once the worker is deployed, e.g.
-    //   PUBLIC_ORIGIN = "https://notepad-zip.<your-subdomain>.workers.dev"
-    // Until set, the worker falls back to the request's own URL origin.
-    "PUBLIC_ORIGIN": "http://localhost:8787"
+    // Set to the deployed origin so copied image URLs are absolute.
+    // Override here or via `wrangler secret put PUBLIC_ORIGIN` if you
+    // front the worker with a custom domain.
+    "PUBLIC_ORIGIN": "https://notepad.blp.sh"
   }
 }
