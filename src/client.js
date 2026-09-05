@@ -256,6 +256,57 @@ export default function run() {
     }
   });
 
+  // Drag-and-drop: intercept files dropped onto the editor and route them
+  // through the same upload pipeline as paste. Without this the browser's
+  // default behavior is to inline the image as a data: URL (base64),
+  // which we don't want — it bloats the KV payload and is unrecoverable.
+  function pickFilesFromDataTransfer(dt) {
+    const out = [];
+    if (!dt) return out;
+    // Modern: DataTransferItemList.getAsFileSystemHandle not used; we use
+    // the .files property which is populated when files are dragged in.
+    if (dt.files && dt.files.length) {
+      for (let i = 0; i < dt.files.length; i++) {
+        const f = dt.files[i];
+        if (f && f.type && (f.type.startsWith("image/") || f.type.startsWith("video/"))) out.push(f);
+      }
+    } else if (dt.items) {
+      for (let i = 0; i < dt.items.length; i++) {
+        const it = dt.items[i];
+        if (it.kind === "file") {
+          const f = it.getAsFile();
+          if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) out.push(f);
+        }
+      }
+    }
+    return out;
+  }
+
+  let dragDepth = 0;
+  editor.addEventListener("dragenter", (ev) => {
+    ev.preventDefault();
+    dragDepth++;
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+  });
+  editor.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+  });
+  editor.addEventListener("dragleave", () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+  });
+  editor.addEventListener("drop", async (ev) => {
+    ev.preventDefault();
+    dragDepth = 0;
+    const files = pickFilesFromDataTransfer(ev.dataTransfer);
+    if (!files.length) return;
+    // Focus the editor first so subsequent caret insertion lands inside it.
+    editor.focus();
+    for (const file of files) {
+      handleMediaPaste(file);
+    }
+  });
+
   copyBtn.addEventListener("click", async () => {
     const html = serialize(editor);
     const plain = toPlainText(html);

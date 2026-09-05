@@ -192,5 +192,48 @@ log("\n[10] toPlainText: <video> -> [src]");
   else ok("[src] for video");
 }
 
+
+// Verify pickFilesFromDataTransfer filter logic by re-evaluating a minimal
+// copy of the function under the stub.
+log("\n[11] drop filter: only image/video files are accepted");
+{
+  const src = `
+    function pickFilesFromDataTransfer(dt) {
+      const out = [];
+      if (!dt) return out;
+      if (dt.files && dt.files.length) {
+        for (let i = 0; i < dt.files.length; i++) {
+          const f = dt.files[i];
+          if (f && f.type && (f.type.startsWith("image/") || f.type.startsWith("video/"))) out.push(f);
+        }
+      } else if (dt.items) {
+        for (let i = 0; i < dt.items.length; i++) {
+          const it = dt.items[i];
+          if (it.kind === "file") {
+            const f = it.getAsFile();
+            if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) out.push(f);
+          }
+        }
+      }
+      return out;
+    }
+    globalThis.__pick = pickFilesFromDataTransfer;
+  `;
+  new Function(src)();
+  const pick = globalThis.__pick;
+  const dt = {
+    files: [
+      { name: "a.png", type: "image/png" },
+      { name: "b.txt", type: "text/plain" },
+      { name: "c.mp4", type: "video/mp4" },
+      { name: "d.svg", type: "image/svg+xml" },
+    ],
+  };
+  const out = pick(dt);
+  if (out.length !== 3) bad("kept 3", out.length);
+  else if (out[0].name !== "a.png" || out[1].name !== "c.mp4" || out[2].name !== "d.svg") bad("names", JSON.stringify(out.map(f => f.name)));
+  else ok("filters text/plain out");
+}
+
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
