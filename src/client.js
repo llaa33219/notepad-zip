@@ -329,20 +329,12 @@ export default function run() {
     }
   });
 
-  // New: drop the current note, generate a fresh editor. If the user
-  // types anything, a new id is created on the first input. We don't
-  // confirm — work stays in the editor and saving it first is unnecessary
-  // since clicking New is an explicit reset.
+  // New: open a fresh tab at the root URL. We deliberately don't reuse
+  // this tab — the in-place reset would discard any unsaved work without
+  // an undo path. A new tab also makes the boundary between notes
+  // explicit in the browser tab strip.
   newBtn.addEventListener("click", () => {
-    if (saveTimer != null) { clearTimeout(saveTimer); saveTimer = null; }
-    inflight?.abort();
-    inflight = null;
-    pendingFlush = false;
-    currentId = "";
-    editor.innerHTML = "";
-    urlEl.textContent = "";
-    history.replaceState(null, "", "/");
-    setStatus("ready");
+    window.open(location.origin + "/", "_blank", "noopener");
   });
 
   zipBtn.addEventListener("click", async () => {

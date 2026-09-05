@@ -14,14 +14,14 @@ export function htmlShell({ id, origin }: Vars): string {
 <title>notepad-zip</title>
 <style>
   :root { color-scheme: light dark; }
-  html, body { height: 100%; margin: 0; }
+  html, body { margin: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
     background: #f4f4f6;
     color: #111;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    padding: 16px;
+    min-height: 100vh;
+    box-sizing: border-box;
   }
   @media (prefers-color-scheme: dark) {
     body { background: #0a0a0b; color: #e6e6e6; }
@@ -33,13 +33,13 @@ export function htmlShell({ id, origin }: Vars): string {
     .toolbar button:hover { background: #26262a; }
   }
   .shell {
-    flex: 1;
     width: 100%;
     max-width: 800px;
+    height: calc(100vh - 32px);
+    margin: 0 auto;
     background: #fff;
     border: 1px solid #e5e5ea;
     border-radius: 10px;
-    margin: 16px 16px 32px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -64,7 +64,8 @@ export function htmlShell({ id, origin }: Vars): string {
     font-size: 15px; line-height: 1.6;
     white-space: pre-wrap; word-wrap: break-word;
     caret-color: currentColor;
-    min-height: 60vh;
+    overflow-y: auto;
+    min-height: 0;
   }
   .editor:empty::before {
     content: attr(data-placeholder);

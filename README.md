@@ -11,7 +11,7 @@ A minimal notepad running on Cloudflare Workers. Text in **Workers KV**, media (
 - Paste any image / video / SVG and it uploads to R2 immediately, replaced inline with `<img>` (max 400px wide) or `<video controls>`. A semi-transparent placeholder shows during upload.
 - **Copy** button: plain text to clipboard. Images and videos both serialize as `[https://…/img/img_xxx.png]`. Block elements get trailing newlines.
 - **Copy ZIP link** button: copies `https://<host>/api/note/{id}/zip` to clipboard. Paste it anywhere to download `note-{id}.zip` containing `note.txt` plus every referenced media file.
-- **New** button: clears the editor and resets the URL to `/`. The next keystroke creates a fresh 8-char note id.
+- **New** button: opens a fresh tab at the root URL. The current tab is left intact, so accidental clicks cost nothing.
 - Notes up to **8 MiB** (UTF-8 bytes) are accepted — well under the 25 MiB KV value cap.
 - 같은 URL을 다시 열면 저장된 HTML이 그대로 복원됩니다.
 

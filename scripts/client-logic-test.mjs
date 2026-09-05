@@ -236,19 +236,19 @@ log("\n[11] drop filter: only image/video files are accepted");
 }
 
 
-log("\n[12] New button: clears currentId, editor, URL");
+log("\n[12] New button: opens a new tab at the root URL");
 {
-  let historyArgs = null;
-  globalThis.history = { replaceState: (_a, _b, p) => { historyArgs = p; } };
-  let inflight = { abort() { inflight = null; } };
-  let currentId = "abcd1234";
-  // Apply handler logic
-  if (inflight) inflight.abort();
-  inflight = null;
-  currentId = "";
-  globalThis.history.replaceState(null, "", "/");
-  if (currentId !== "" || historyArgs !== "/") bad("reset", `id=${currentId} url=${historyArgs}`);
-  else ok("id cleared, URL=/");
+  const location_origin = "http://localhost:8787";
+  let openedUrl = null;
+  globalThis.window = Object.assign({}, globalThis.window, {
+    open: (url, target) => { openedUrl = { url, target }; },
+  });
+  // Mirror the newBtn handler:
+  globalThis.window.open(location_origin + "/", "_blank", "noopener");
+  if (!openedUrl) bad("no open()", JSON.stringify(openedUrl));
+  else if (openedUrl.url !== location_origin + "/") bad("url", openedUrl.url);
+  else if (openedUrl.target !== "_blank") bad("target", openedUrl.target);
+  else ok(`new tab: ${openedUrl.url} (${openedUrl.target})`);
 }
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
