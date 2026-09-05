@@ -5,6 +5,7 @@
   "compatibility_date": "2025-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "keep_names": false,
 
   // --- Bindings (KV / R2) -------------------------------------------------
   //
