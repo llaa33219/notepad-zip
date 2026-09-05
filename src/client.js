@@ -141,7 +141,7 @@ export default function run() {
     if (inflight) inflight.abort();
     const ac = new AbortController();
     inflight = ac;
-    setStatus("저장 중…");
+    setStatus("Saving…");
     try {
       const res = await fetch(`/api/note/${currentId}`, {
         method: "PUT",
@@ -150,10 +150,10 @@ export default function run() {
         signal: ac.signal,
       });
       if (!res.ok) throw new Error(`http ${res.status}`);
-      setStatus("저장됨");
+      setStatus("Saved");
     } catch (e) {
       if (e && e.name === "AbortError") return;
-      setStatus("저장 실패");
+      setStatus("Save failed");
       pendingFlush = true;
       setTimeout(() => { if (pendingFlush) { pendingFlush = false; flushSave(); } }, 1500);
     }
@@ -175,7 +175,7 @@ export default function run() {
     placeholder.setAttribute(isVideo ? "preload" : "alt", file.name || (isVideo ? "pasted video" : "pasted image"));
     placeholder.src = URL.createObjectURL(file);
     insertAtCaret(placeholder);
-    setStatus("업로드 중…");
+    setStatus("Uploading…");
     try {
       const url = await uploadFile(file);
       placeholder.removeAttribute("data-uploading");
@@ -184,7 +184,7 @@ export default function run() {
       return placeholder;
     } catch {
       placeholder.setAttribute("data-failed", "1");
-      setStatus("업로드 실패");
+      setStatus("Upload failed");
       return null;
     }
   }
@@ -206,16 +206,16 @@ export default function run() {
 
   async function loadNote(id) {
     if (!id) return;
-    setStatus("불러오는 중…");
+    setStatus("Loading…");
     try {
       const res = await fetch(`/api/note/${id}`);
       if (res.status === 404) { setStatus("ready"); return; }
       if (!res.ok) throw new Error(`http ${res.status}`);
       const { html } = await res.json();
       editor.innerHTML = html;
-      setStatus("저장됨");
+      setStatus("Saved");
     } catch {
-      setStatus("불러오기 실패");
+      setStatus("Load failed");
     }
   }
 
@@ -251,8 +251,8 @@ export default function run() {
     const html = serialize(editor);
     const plain = toPlainText(html);
     const ok = await copyToClipboard(plain);
-    setStatus(ok ? "복사됨 (이미지는 [url])" : "복사 실패");
-    setTimeout(() => setStatus("저장됨"), 1500);
+    setStatus(ok ? "Copied (images as [url])" : "Copy failed");
+    setTimeout(() => setStatus("Saved"), 1500);
   });
 
   window.addEventListener("beforeunload", () => {
@@ -271,30 +271,30 @@ export default function run() {
   zipBtn.addEventListener("click", async () => {
     // Make sure we have an id; if not, generate one and persist first.
     if (!currentId) {
-      // flush any pending save first
       if (saveTimer != null) { clearTimeout(saveTimer); saveTimer = null; }
       await flushSave();
     }
     if (!currentId) {
-      setStatus("저장 후 다운로드 가능");
+      setStatus("Type something first");
       return;
     }
-    setStatus("ZIP 만드는 중…");
+    const link = `${location.origin}/api/note/${currentId}/zip`;
     try {
-      const res = await fetch(`/api/note/${currentId}/zip`);
-      if (!res.ok) throw new Error(`http ${res.status}`);
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `notepad-${currentId}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      setStatus(`ZIP 다운로드 (미디어 ${res.headers.get("x-note-media-count") || 0}개)`);
-      setTimeout(() => setStatus("저장됨"), 2000);
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand("copy"); } catch {}
+        document.body.removeChild(ta);
+      }
+      setStatus(`ZIP link copied — paste to download (${link})`);
     } catch {
-      setStatus("ZIP 실패");
+      setStatus(`Copy failed. ZIP URL: ${link}`);
     }
   });
 

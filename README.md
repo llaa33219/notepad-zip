@@ -2,15 +2,15 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-Cloudflare Workers에서 동작하는 가벼운 메모장. 텍스트는 **Workers KV**, 이미지는 **R2**에 저장됩니다.
+A minimal notepad running on Cloudflare Workers. Text in **Workers KV**, media (images, video, SVG) in **R2**.
 
 ## 동작
 
 - 페이지를 열면 빈 노트가 보이고, 무엇이든 입력하면 **300 ms 디바운스**로 자동 저장됩니다.
 - 첫 입력이 들어오면 클라이언트에서 **8자 base36 ID**를 생성하고 `history.replaceState`으로 URL이 `/{id}`로 바뀝니다 (페이지 새로고침 없음).
-- 이미지를 복사해서 에디터에 붙여넣으면 즉시 R2로 업로드되고 `<img>`로 교체됩니다. 영상도 동일하게 동작하며 `<video controls>`로 표시됩니다. SVG도 지원. 업로드 중에는 반투명 placeholder가 보입니다.
-- **복사** 버튼을 누르면 클립보드에 plain text가 들어가고, 이미지와 영상 모두 `[https://…/img/img_xxxx.png]` 형태로 직렬화됩니다. 블록 요소 끝에는 줄바꿈이 붙습니다.
-- **ZIP** 버튼을 누르면 `note.txt` + 첨부된 모든 media 파일이 들어있는 `notepad-{id}.zip`이 다운로드됩니다. 미디어 URL을 추출해 R2에서 직접 읽어와 묶습니다.
+- Paste any image / video / SVG and it uploads to R2 immediately, replaced inline with `<img>` (max 400px wide) or `<video controls>`. A semi-transparent placeholder shows during upload.
+- **Copy** button: plain text to clipboard. Images and videos both serialize as `[https://…/img/img_xxx.png]`. Block elements get trailing newlines.
+- **Copy ZIP link** button: copies `https://<host>/api/note/{id}/zip` to clipboard. Paste it anywhere to download `note-{id}.zip` containing `note.txt` plus every referenced media file.
 - 같은 URL을 다시 열면 저장된 HTML이 그대로 복원됩니다.
 
 ## 라우트

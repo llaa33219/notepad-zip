@@ -81,13 +81,15 @@ async function readNote(env: Env, id: string): Promise<string | null> {
 }
 
 async function writeNote(env: Env, id: string, html: string): Promise<void> {
-  if (html.length > MAX_NOTE_BYTES) {
-    throw new Error("note too large");
+  // KV measures storage in bytes, not JS string length (UTF-16 units).
+  // A CJK-heavy note can blow past 256 KiB byte-wise while still being
+  // well under 256 KiB characters. Check the UTF-8 byte length.
+  const bytes = new TextEncoder().encode(html).byteLength;
+  if (bytes > MAX_NOTE_BYTES) {
+    throw new Error(`note too large: ${bytes} bytes (max ${MAX_NOTE_BYTES})`);
   }
-  // KV supports metadata; we use it to record updated-at so we can return
-  // a useful Last-Modified later if we want ETag-style caching.
   await env.NOTES.put(id, html, {
-    metadata: { updatedAt: Date.now(), bytes: html.length },
+    metadata: { updatedAt: Date.now(), bytes },
   });
 }
 
@@ -96,7 +98,12 @@ async function uploadImage(req: Request, env: Env): Promise<Response> {
   if (!ct.toLowerCase().startsWith("multipart/form-data")) {
     return badRequest("multipart/form-data required");
   }
-  const form = await req.formData();
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch (e) {
+    return badRequest(`malformed multipart body: ${(e as Error).message ?? "unknown"}`);
+  }
   const file = form.get("file");
   if (!(file instanceof File)) return badRequest("file field required");
 

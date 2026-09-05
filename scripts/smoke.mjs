@@ -262,5 +262,32 @@ log("\n[21] PUT /api/note/:id/zip -> 405");
   else ok("405");
 }
 
+
+log("\n[22] PUT note with 300 KiB UTF-8 bytes -> 500 (rejected)");
+{
+  // 80k repetitions of a 4-byte sequence => 320 KiB UTF-8 bytes, but only
+  // 80k characters so html.length (UTF-16 units) < 256KiB limit. Old code
+  // accepted; new code measures bytes correctly.
+  const html = "<p>" + "\uac00\ub098\ub2e4\ub2e4".repeat(80000) + "</p>";
+  const r = await call("PUT", "/api/note/utf8big", JSON.stringify({ html }), { "content-type": "application/json" });
+  if (r.status !== 500 && r.status !== 400) bad("utf8 byte limit", r.status);
+  else ok(`rejected (status ${r.status})`);
+}
+
+log("\n[23] PUT note within limit -> 200");
+{
+  const html = "<p>" + "\uac00\ub098\ub2e4".repeat(100) + "</p>";  // 600 bytes
+  const r = await call("PUT", "/api/note/utf8small", JSON.stringify({ html }), { "content-type": "application/json" });
+  if (r.status !== 200) bad("utf8 ok", r.status);
+  else ok("accepted");
+}
+
+log("\n[24] POST /api/upload with malformed multipart -> 400 not 500");
+{
+  const r = await call("POST", "/api/upload", "garbage", { "content-type": "multipart/form-data; boundary=xxx" });
+  if (r.status !== 400) bad("400 expected", r.status);
+  else ok("rejected with 400, not 500");
+}
+
 log(`\n=== ${pass} passed, ${fail} failed ===`);
 process.exit(fail ? 1 : 0);
