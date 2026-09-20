@@ -253,6 +253,9 @@ async function serveImage(env: Env, key: string): Promise<Response> {
     headers.set("content-encoding", obj.httpMetadata.contentEncoding);
   }
   if (obj.uploaded) headers.set("last-modified", obj.uploaded.toUTCString());
+  // Cross-origin fetch (e.g. ClipboardItem image copy when PUBLIC_ORIGIN
+  // differs from the page origin) needs explicit CORS on media responses.
+  headers.set("access-control-allow-origin", "*");
 
   return new Response(obj.body, { headers });
 }

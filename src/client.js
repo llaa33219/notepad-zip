@@ -339,33 +339,51 @@ export default function run() {
     return d;
   }
 
+  // Fetch + transcode to PNG as a promise. Passed to ClipboardItem so the
+  // clipboard write is registered synchronously inside the click handler —
+  // awaiting network work first would expire the user-activation window and
+  // the write would be rejected (this was the "Image copy failed" bug).
+  async function fetchPngBlob(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const blob = await res.blob();
+    if (blob.type === "image/png") return blob;
+    if (typeof createImageBitmap !== "function") return blob;
+    const bmp = await createImageBitmap(blob);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bmp.width; canvas.height = bmp.height;
+      canvas.getContext("2d").drawImage(bmp, 0, 0);
+      const out = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!out) throw new Error("canvas.toBlob returned null");
+      return out;
+    } finally {
+      bmp.close();
+    }
+  }
+
   async function copyImageToClipboard(el) {
     const url = el.currentSrc || el.src;
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
-        let out = blob;
-        // Most browsers only accept image/png for ClipboardItem; convert.
-        if (blob.type !== "image/png" && typeof createImageBitmap === "function") {
-          try {
-            const bmp = await createImageBitmap(blob);
-            const canvas = document.createElement("canvas");
-            canvas.width = bmp.width; canvas.height = bmp.height;
-            canvas.getContext("2d").drawImage(bmp, 0, 0);
-            out = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-            bmp.close();
-          } catch { out = blob; }
-        }
-        await navigator.clipboard.write([new ClipboardItem({ [out.type]: out })]);
+    const fallbackUrl = absoluteUrl(el.getAttribute("src") || url || "");
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      try {
+        // Key detail: the blob is a *promise*, handed to ClipboardItem in the
+        // same synchronous task as the click — no activation expiry.
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": fetchPngBlob(url) }),
+        ]);
         setStatus("Image copied");
-      } else {
-        await copyToClipboard(absoluteUrl(el.getAttribute("src") || ""));
-        setStatus("Clipboard API unavailable — copied image URL");
+        setTimeout(() => setStatus("Saved"), 2000);
+        return;
+      } catch {
+        // fall through to URL copy
       }
-    } catch (e) {
-      await copyToClipboard(absoluteUrl(el.getAttribute("src") || ""));
-      setStatus("Image copy failed — copied image URL");
+    }
+    try {
+      await copyToClipboard(fallbackUrl);
+      setStatus("Copied image URL (image copy unsupported)");
+    } catch {
+      setStatus(`Copy failed: ${fallbackUrl}`);
     }
     setTimeout(() => setStatus("Saved"), 2000);
   }
