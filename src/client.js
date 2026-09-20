@@ -339,53 +339,65 @@ export default function run() {
     return d;
   }
 
-  // Fetch + transcode to PNG as a promise. Passed to ClipboardItem so the
-  // clipboard write is registered synchronously inside the click handler —
-  // awaiting network work first would expire the user-activation window and
-  // the write would be rejected (this was the "Image copy failed" bug).
-  async function fetchPngBlob(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`fetch ${res.status}`);
-    const blob = await res.blob();
-    if (blob.type === "image/png") return blob;
-    if (typeof createImageBitmap !== "function") return blob;
-    const bmp = await createImageBitmap(blob);
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = bmp.width; canvas.height = bmp.height;
-      canvas.getContext("2d").drawImage(bmp, 0, 0);
-      const out = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!out) throw new Error("canvas.toBlob returned null");
-      return out;
-    } finally {
-      bmp.close();
-    }
+  // Convert the image to a PNG data URL. Draw from the *decoded* <img>
+  // element itself (not a fresh fetch) so this works even when the src is
+  // cross-origin, because the page already has a decoded copy.
+  async function toPngDataUrl(el) {
+    await el.decode().catch(() => {});
+    const w = el.naturalWidth || 1;
+    const h = el.naturalHeight || 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(el, 0, 0, w, h);
+    return canvas.toDataURL("image/png");
   }
 
   async function copyImageToClipboard(el) {
-    const url = el.currentSrc || el.src;
-    const fallbackUrl = absoluteUrl(el.getAttribute("src") || url || "");
-    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
-      try {
-        // Key detail: the blob is a *promise*, handed to ClipboardItem in the
-        // same synchronous task as the click — no activation expiry.
-        await navigator.clipboard.write([
-          new ClipboardItem({ "image/png": fetchPngBlob(url) }),
-        ]);
-        setStatus("Image copied");
-        setTimeout(() => setStatus("Saved"), 2000);
-        return;
-      } catch {
-        // fall through to URL copy
+    const fallbackUrl = absoluteUrl(el.getAttribute("src") || el.src || "");
+    try {
+      const dataUrl = await toPngDataUrl(el);
+      const items = { "image/png": dataUrl };
+      // Firefox: ClipboardItem isn't exposed to content JS; navigator.clipboard.write
+      // rejects on data URLs. execCommand is the only broadly-working path there.
+      if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
+        await navigator.clipboard.write([new ClipboardItem(items)]);
+      } else {
+        throw new Error("no ClipboardItem");
+      }
+      setStatus("Image copied");
+    } catch {
+      // Fallback: put the image on the clipboard as HTML <img>, plus plain
+      // text of the absolute URL. Targets that can't take rich HTML still
+      // get something pasteable.
+      const okHtml = await copyRich(
+        `<img src="${fallbackUrl.replace(/"/g, "&quot;")}" alt="">`,
+        fallbackUrl,
+      );
+      if (okHtml) {
+        setStatus("Image copied (as rich HTML)");
+      } else {
+        const ok = await copyToClipboard(fallbackUrl);
+        setStatus(ok ? "Copied image URL" : `Copy failed: ${fallbackUrl}`);
       }
     }
-    try {
-      await copyToClipboard(fallbackUrl);
-      setStatus("Copied image URL (image copy unsupported)");
-    } catch {
-      setStatus(`Copy failed: ${fallbackUrl}`);
-    }
     setTimeout(() => setStatus("Saved"), 2000);
+  }
+
+  // Write both text/html and text/plain so rich targets (docs, chat) embed
+  // the image and plain targets get the URL.
+  async function copyRich(html, plain) {
+    if (!(navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext)) return false;
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([plain], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function showCtxMenu(x, y, items) {
