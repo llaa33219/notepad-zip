@@ -339,65 +339,34 @@ export default function run() {
     return d;
   }
 
-  // Convert the image to a PNG data URL. Draw from the *decoded* <img>
-  // element itself (not a fresh fetch) so this works even when the src is
-  // cross-origin, because the page already has a decoded copy.
-  async function toPngDataUrl(el) {
-    await el.decode().catch(() => {});
-    const w = el.naturalWidth || 1;
-    const h = el.naturalHeight || 1;
-    const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
-    canvas.getContext("2d").drawImage(el, 0, 0, w, h);
-    return canvas.toDataURL("image/png");
+  // Copy an image by selecting it and dispatching copy. The browser's own
+  // copy pipeline then writes image/png to the clipboard — the same code
+  // path as Ctrl+C on a selected image, which works in both Firefox and
+  // Chromium without ClipboardItem support or CORS-tainted fetches.
+  function selectNode(el) {
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNode(el);
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
-  async function copyImageToClipboard(el) {
+  function copyImageToClipboard(el) {
     const fallbackUrl = absoluteUrl(el.getAttribute("src") || el.src || "");
+    const sel = window.getSelection();
+    const saved = [];
+    for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
     try {
-      const dataUrl = await toPngDataUrl(el);
-      const items = { "image/png": dataUrl };
-      // Firefox: ClipboardItem isn't exposed to content JS; navigator.clipboard.write
-      // rejects on data URLs. execCommand is the only broadly-working path there.
-      if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
-        await navigator.clipboard.write([new ClipboardItem(items)]);
-      } else {
-        throw new Error("no ClipboardItem");
-      }
-      setStatus("Image copied");
+      selectNode(el);
+      const ok = document.execCommand("copy");
+      setStatus(ok ? "Image copied" : "Copy failed");
     } catch {
-      // Fallback: put the image on the clipboard as HTML <img>, plus plain
-      // text of the absolute URL. Targets that can't take rich HTML still
-      // get something pasteable.
-      const okHtml = await copyRich(
-        `<img src="${fallbackUrl.replace(/"/g, "&quot;")}" alt="">`,
-        fallbackUrl,
-      );
-      if (okHtml) {
-        setStatus("Image copied (as rich HTML)");
-      } else {
-        const ok = await copyToClipboard(fallbackUrl);
-        setStatus(ok ? "Copied image URL" : `Copy failed: ${fallbackUrl}`);
-      }
+      setStatus("Copy failed");
     }
+    // Restore previous selection
+    sel.removeAllRanges();
+    for (const r of saved) sel.addRange(r);
     setTimeout(() => setStatus("Saved"), 2000);
-  }
-
-  // Write both text/html and text/plain so rich targets (docs, chat) embed
-  // the image and plain targets get the URL.
-  async function copyRich(html, plain) {
-    if (!(navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext)) return false;
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        }),
-      ]);
-      return true;
-    } catch {
-      return false;
-    }
   }
 
   function showCtxMenu(x, y, items) {
