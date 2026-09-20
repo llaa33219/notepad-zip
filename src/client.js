@@ -369,6 +369,26 @@ export default function run() {
     setTimeout(() => setStatus("Saved"), 2000);
   }
 
+  // copy event: selection contains an img/video -> write text/html with
+  // the <img> tag and a plain-text [url] fallback, so pasting into another
+  // app embeds the image instead of its alt text ("image.png").
+  document.addEventListener("copy", (ev) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const frag = sel.getRangeAt(0).cloneContents();
+    const media = frag.querySelector && frag.querySelector("img, video");
+    if (!media) return;
+    const src = absoluteUrl(media.getAttribute("src") || "");
+    if (ev.clipboardData) {
+      const tag = media.tagName.toLowerCase() === "video"
+        ? `<video controls src="${src.replace(/"/g, "&quot;")}"></video>`
+        : `<img src="${src.replace(/"/g, "&quot;")}" alt="">`;
+      ev.clipboardData.setData("text/html", tag);
+      ev.clipboardData.setData("text/plain", `[${src}]`);
+      ev.preventDefault();
+    }
+  });
+
   function showCtxMenu(x, y, items) {
     ctxMenu.textContent = "";
     for (const it of items) ctxMenu.appendChild(it);
