@@ -137,14 +137,15 @@ log("\n[4] serialize: <img> with attribute escaping");
   const out = serialize(root);
   if (!out.includes('src="/img/foo.png"')) bad("src", out);
   else if (!out.includes('alt="a &quot;b&quot;"')) bad("alt escape", out);
-  else ok("img with escaped attrs");
+  else if (!out.includes('style="pointer-events:none"')) bad("img pointer-events", out);
+  else ok("img with escaped attrs + pointer-events:none");
 }
 
 log("\n[5] toPlainText: <img> -> [src]");
 {
-  const out = toPlainText('<img src="/img/foo.png" alt="x">');
+  const out = toPlainText('<img src="/img/foo.png" alt="x" style="pointer-events:none">');
   if (out !== "[/img/foo.png]") bad("img bracket", JSON.stringify(out));
-  else ok("[src] format");
+  else ok("[src] format (ignores style attr)");
 }
 
 log("\n[6] toPlainText: text + br");
@@ -182,14 +183,15 @@ log("\n[9] serialize: <video> preserved with controls");
   const out = serialize(root);
   if (!out.includes("<video controls")) bad("video tag", JSON.stringify(out));
   else if (!out.includes('src="/img/clip.mp4"')) bad("video src", JSON.stringify(out));
-  else ok("video tag emitted");
+  else if (!out.includes('style="pointer-events:none"')) bad("video pointer-events", JSON.stringify(out));
+  else ok("video tag emitted with pointer-events:none");
 }
 
 log("\n[10] toPlainText: <video> -> [src]");
 {
-  const out = toPlainText('<video controls src="/img/clip.mp4"></video>');
+  const out = toPlainText('<video controls src="/img/clip.mp4" style="pointer-events:none"></video>');
   if (out !== "[/img/clip.mp4]") bad("video bracket", JSON.stringify(out));
-  else ok("[src] for video");
+  else ok("[src] for video (ignores style attr)");
 }
 
 

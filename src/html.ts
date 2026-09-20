@@ -77,11 +77,13 @@ export function htmlShell({ id, origin }: Vars): string {
     max-width: 400px; max-height: 400px;
     border-radius: 6px; box-shadow: 0 0 0 1px #eee;
     vertical-align: middle;
+    pointer-events: none;
   }
   .editor video {
     display: block; max-width: 400px; max-height: 60vh;
     border-radius: 6px; box-shadow: 0 0 0 1px #eee;
     margin: 8px 0;
+    pointer-events: none;
   }
   .editor img[data-uploading="1"],
   .editor video[data-uploading="1"] { opacity: 0.35; }

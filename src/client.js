@@ -13,6 +13,18 @@ export default function run() {
   const zipBtn = document.getElementById("btn-zip");
   const newBtn = document.getElementById("btn-new");
 
+  // Pointer events on media are OFF so that right-click / copy / context menu
+  // land on the editor itself, not on the <img>. Without this the browser's
+  // media context menu (Open in New Tab / Save As / Copy Image Address) fires
+  // against the raw img element, and its "Copy Link" picks up the
+  // contenteditable wrapper's serialized form (e.g. https://image.png/).
+  function setMediaPointerEvents(root) {
+    const els = root.querySelectorAll("img, video");
+    for (const el of els) {
+      el.style.pointerEvents = "none";
+    }
+  }
+
   const ID_LEN = 8;
   const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -59,13 +71,13 @@ export default function run() {
       if (tag === "img") {
         const src = el.getAttribute("src") || "";
         const alt = el.getAttribute("alt") || "";
-        parts.push(`<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`);
+        parts.push(`<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" style="pointer-events:none">`);
         return;
       }
       if (tag === "video") {
         const src = el.getAttribute("src") || "";
         const poster = el.getAttribute("poster");
-        parts.push(`<video controls src="${escapeAttr(src)}"${poster ? ` poster="${escapeAttr(poster)}"` : ""}></video>`);
+        parts.push(`<video controls src="${escapeAttr(src)}"${poster ? ` poster="${escapeAttr(poster)}"` : ""} style="pointer-events:none"></video>`);
         return;
       }
       parts.push(`<${tag}>`);
@@ -190,6 +202,7 @@ export default function run() {
       const url = await uploadFile(file);
       placeholder.removeAttribute("data-uploading");
       placeholder.src = url;
+      placeholder.style.pointerEvents = "none";
       scheduleSave();
       return placeholder;
     } catch (e) {
@@ -223,6 +236,7 @@ export default function run() {
       if (!res.ok) throw new Error(`http ${res.status}`);
       const { html } = await res.json();
       editor.innerHTML = html;
+      setMediaPointerEvents(editor);
       setStatus("Saved");
     } catch {
       setStatus("Load failed");

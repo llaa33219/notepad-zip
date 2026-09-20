@@ -124,6 +124,28 @@ log("\n[8] GET /img/<uploaded> -> 200 image/png");
   }
 }
 
+log("\n[8b] HEAD /img/<uploaded> -> 200, no body");
+{
+  if (!uploadedUrl) { bad("uploaded missing", "skipped"); }
+  else {
+    const r = await call("HEAD", new URL(uploadedUrl).pathname);
+    if (r.status !== 200) bad("200", r.status);
+    else if (!r.headers.get("content-type")?.includes("image/png")) bad("ct image/png", r.headers.get("content-type"));
+    else if ((await r.text()) !== "") bad("empty body", "non-empty");
+    else ok("HEAD serves headers without body");
+  }
+}
+
+log("\n[8c] POST /img/<anything> -> 405");
+{
+  if (!uploadedUrl) { bad("uploaded missing", "skipped"); }
+  else {
+    const r = await call("POST", new URL(uploadedUrl).pathname, "x");
+    if (r.status !== 405) bad("405", r.status);
+    else ok("POST on /img rejected");
+  }
+}
+
 log("\n[9] GET /img/notmatching.png -> 404");
 {
   const r = await call("GET", "/img/notmatching.png");
