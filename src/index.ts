@@ -331,18 +331,11 @@ export default {
       catch (e) { return serverError((e as Error).message || "zip failed"); }
     }
 
-    // GET /img/:key (also HEAD, so link checkers / right-click "copy link" work)
+    // GET /img/:key
     const imgMatch = path.match(/^\/img\/([A-Za-z0-9._-]+)$/);
     if (imgMatch) {
-      if (req.method !== "GET" && req.method !== "HEAD") return methodNotAllowed(["GET", "HEAD"]);
-      try {
-        if (req.method === "HEAD") {
-          // HEAD shares the route but skips the body read.
-          const res = await serveImage(env, imgMatch[1]);
-          return new Response(null, { status: res.status, headers: res.headers });
-        }
-        return await serveImage(env, imgMatch[1]);
-      }
+      if (req.method !== "GET") return methodNotAllowed(["GET"]);
+      try { return await serveImage(env, imgMatch[1]); }
       catch (e) { return serverError((e as Error).message || "image failed"); }
     }
 

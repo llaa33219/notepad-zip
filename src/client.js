@@ -13,18 +13,6 @@ export default function run() {
   const zipBtn = document.getElementById("btn-zip");
   const newBtn = document.getElementById("btn-new");
 
-  // Pointer events on media are OFF so that right-click / copy / context menu
-  // land on the editor itself, not on the <img>. Without this the browser's
-  // media context menu (Open in New Tab / Save As / Copy Image Address) fires
-  // against the raw img element, and its "Copy Link" picks up the
-  // contenteditable wrapper's serialized form (e.g. https://image.png/).
-  function setMediaPointerEvents(root) {
-    const els = root.querySelectorAll("img, video");
-    for (const el of els) {
-      el.style.pointerEvents = "none";
-    }
-  }
-
   const ID_LEN = 8;
   const ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -55,6 +43,9 @@ export default function run() {
   function escapeAttr(s) {
     return s.replace(/[&"]/g, (c) => ({ "&": "&amp;", '"': "&quot;" })[c]);
   }
+  function absoluteUrl(u) {
+    try { return new URL(u, location.href).href; } catch { return u; }
+  }
 
   // editor DOM -> HTML string
   function serialize(root) {
@@ -71,13 +62,13 @@ export default function run() {
       if (tag === "img") {
         const src = el.getAttribute("src") || "";
         const alt = el.getAttribute("alt") || "";
-        parts.push(`<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" style="pointer-events:none">`);
+        parts.push(`<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`);
         return;
       }
       if (tag === "video") {
         const src = el.getAttribute("src") || "";
         const poster = el.getAttribute("poster");
-        parts.push(`<video controls src="${escapeAttr(src)}"${poster ? ` poster="${escapeAttr(poster)}"` : ""} style="pointer-events:none"></video>`);
+        parts.push(`<video controls src="${escapeAttr(src)}"${poster ? ` poster="${escapeAttr(poster)}"` : ""}></video>`);
         return;
       }
       parts.push(`<${tag}>`);
@@ -202,7 +193,6 @@ export default function run() {
       const url = await uploadFile(file);
       placeholder.removeAttribute("data-uploading");
       placeholder.src = url;
-      placeholder.style.pointerEvents = "none";
       scheduleSave();
       return placeholder;
     } catch (e) {
@@ -236,7 +226,6 @@ export default function run() {
       if (!res.ok) throw new Error(`http ${res.status}`);
       const { html } = await res.json();
       editor.innerHTML = html;
-      setMediaPointerEvents(editor);
       setStatus("Saved");
     } catch {
       setStatus("Load failed");
@@ -321,6 +310,136 @@ export default function run() {
       handleMediaPaste(file);
     }
   });
+
+  // ---------- custom context menu ----------
+  // The native contenteditable context menu does not expose image actions
+  // (open in new tab / copy image), and its "copy link" serializes relative
+  // URLs against a bogus base (https://image.png/). We take over right-click
+  // inside the editor and show our own menu.
+  const ctxMenu = document.getElementById("ctx-menu");
+  let ctxTarget = null; // img/video element the menu was opened for
+
+  function hideCtxMenu() {
+    ctxMenu.classList.remove("open");
+    ctxMenu.hidden = true;
+    ctxTarget = null;
+  }
+
+  function ctxItem(label, onClick, disabled) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    if (disabled) b.disabled = true;
+    else b.addEventListener("click", () => { hideCtxMenu(); onClick(); });
+    return b;
+  }
+  function ctxSep() {
+    const d = document.createElement("div");
+    d.className = "sep";
+    return d;
+  }
+
+  async function copyImageToClipboard(el) {
+    const url = el.currentSrc || el.src;
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+        let out = blob;
+        // Most browsers only accept image/png for ClipboardItem; convert.
+        if (blob.type !== "image/png" && typeof createImageBitmap === "function") {
+          try {
+            const bmp = await createImageBitmap(blob);
+            const canvas = document.createElement("canvas");
+            canvas.width = bmp.width; canvas.height = bmp.height;
+            canvas.getContext("2d").drawImage(bmp, 0, 0);
+            out = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+            bmp.close();
+          } catch { out = blob; }
+        }
+        await navigator.clipboard.write([new ClipboardItem({ [out.type]: out })]);
+        setStatus("Image copied");
+      } else {
+        await copyToClipboard(absoluteUrl(el.getAttribute("src") || ""));
+        setStatus("Clipboard API unavailable — copied image URL");
+      }
+    } catch (e) {
+      await copyToClipboard(absoluteUrl(el.getAttribute("src") || ""));
+      setStatus("Image copy failed — copied image URL");
+    }
+    setTimeout(() => setStatus("Saved"), 2000);
+  }
+
+  function showCtxMenu(x, y, items) {
+    ctxMenu.textContent = "";
+    for (const it of items) ctxMenu.appendChild(it);
+    ctxMenu.hidden = false;
+    ctxMenu.classList.add("open");
+    // Clamp to viewport
+    const r = ctxMenu.getBoundingClientRect();
+    const px = Math.max(4, Math.min(x, window.innerWidth - r.width - 4));
+    const py = Math.max(4, Math.min(y, window.innerHeight - r.height - 4));
+    ctxMenu.style.left = px + "px";
+    ctxMenu.style.top = py + "px";
+  }
+
+  editor.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    const t = ev.target;
+    if (t && (t.tagName === "IMG" || t.tagName === "VIDEO")) {
+      ctxTarget = t;
+      const isImg = t.tagName === "IMG";
+      const abs = absoluteUrl(t.getAttribute("src") || t.currentSrc || "");
+      const noun = isImg ? "Image" : "Video";
+      showCtxMenu(ev.clientX, ev.clientY, [
+        ctxItem(`Copy Link`, async () => {
+          const ok = await copyToClipboard(abs);
+          setStatus(ok ? "Link copied" : "Copy failed");
+          setTimeout(() => setStatus("Saved"), 1500);
+        }),
+        ctxItem(`Open ${noun} in New Tab`, () => window.open(abs, "_blank", "noopener")),
+        ...(isImg
+          ? [ctxItem("Copy Image", () => copyImageToClipboard(t))]
+          : []),
+        ctxItem(`Copy ${noun} Address`, async () => {
+          const ok = await copyToClipboard(abs);
+          setStatus(ok ? "Copied" : "Copy failed");
+          setTimeout(() => setStatus("Saved"), 1500);
+        }),
+        ctxItem(`Save ${noun} As…`, () => {
+          const a = document.createElement("a");
+          a.href = abs;
+          try { a.download = abs.split("/").pop() || "media"; } catch {}
+          a.rel = "noopener";
+          a.target = "_blank";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }),
+        ctxSep(),
+        ctxItem("Select All", () => { document.execCommand("selectAll"); }),
+      ]);
+      return;
+    }
+    // Plain text area
+    showCtxMenu(ev.clientX, ev.clientY, [
+      ctxItem("Cut", () => { document.execCommand("cut"); }),
+      ctxItem("Copy", () => { document.execCommand("copy"); }),
+      ctxItem("Paste", () => { document.execCommand("paste"); }),
+      ctxSep(),
+      ctxItem("Select All", () => { document.execCommand("selectAll"); }),
+    ]);
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (ctxMenu.classList.contains("open") && !ctxMenu.contains(ev.target)) hideCtxMenu();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && ctxMenu.classList.contains("open")) hideCtxMenu();
+  });
+  window.addEventListener("blur", hideCtxMenu);
+  window.addEventListener("resize", hideCtxMenu);
+  editor.addEventListener("scroll", hideCtxMenu);
 
   copyBtn.addEventListener("click", async () => {
     const html = serialize(editor);

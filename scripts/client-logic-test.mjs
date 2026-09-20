@@ -47,12 +47,14 @@ const stub = {
     body: { firstElementChild: null },
     execCommand: () => true,
   },
-  location: { origin: "http://localhost:8787" },
+  location: { origin: "http://localhost:8787", href: "http://localhost:8787/" },
   history: { replaceState: () => {} },
   navigator: { clipboard: { writeText: async () => {} }, sendBeacon: () => {} },
   URL: { createObjectURL: () => "blob:fake" },
   FormData: class { constructor(){this.m=new Map();} append(k,v){this.m.set(k,v);} },
   File: class { constructor(){} },
+  // Real WHATWG URL from Node, used by client code (absoluteUrl helper).
+  URL: class extends globalThis.URL {},
   DOMParser: class {
     parseFromString(html) {
       const root = makeEl("div");
@@ -87,11 +89,13 @@ ${Object.entries(stub).map(([k, v]) => `const ${k} = arguments[0].${k};`).join("
 ${body.replace(/editor\.addEventListener[\s\S]*?loadNote\(cfg\.id\);[\s]*\}?[\s]*$/m, "")}
 globalThis.__serialize = serialize;
 globalThis.__toPlainText = toPlainText;
+globalThis.__absoluteUrl = absoluteUrl;
 `;
 new Function("__stub", sandbox)(stub);
 
 const serialize = globalThis.__serialize;
 const toPlainText = globalThis.__toPlainText;
+const absoluteUrl = globalThis.__absoluteUrl;
 
 let pass = 0, fail = 0;
 const ok = (m) => { pass++; log(`  PASS  ${m}`); };
@@ -137,15 +141,14 @@ log("\n[4] serialize: <img> with attribute escaping");
   const out = serialize(root);
   if (!out.includes('src="/img/foo.png"')) bad("src", out);
   else if (!out.includes('alt="a &quot;b&quot;"')) bad("alt escape", out);
-  else if (!out.includes('style="pointer-events:none"')) bad("img pointer-events", out);
-  else ok("img with escaped attrs + pointer-events:none");
+  else ok("img with escaped attrs");
 }
 
 log("\n[5] toPlainText: <img> -> [src]");
 {
-  const out = toPlainText('<img src="/img/foo.png" alt="x" style="pointer-events:none">');
+  const out = toPlainText('<img src="/img/foo.png" alt="x">');
   if (out !== "[/img/foo.png]") bad("img bracket", JSON.stringify(out));
-  else ok("[src] format (ignores style attr)");
+  else ok("[src] format");
 }
 
 log("\n[6] toPlainText: text + br");
@@ -183,15 +186,14 @@ log("\n[9] serialize: <video> preserved with controls");
   const out = serialize(root);
   if (!out.includes("<video controls")) bad("video tag", JSON.stringify(out));
   else if (!out.includes('src="/img/clip.mp4"')) bad("video src", JSON.stringify(out));
-  else if (!out.includes('style="pointer-events:none"')) bad("video pointer-events", JSON.stringify(out));
-  else ok("video tag emitted with pointer-events:none");
+  else ok("video tag emitted");
 }
 
 log("\n[10] toPlainText: <video> -> [src]");
 {
-  const out = toPlainText('<video controls src="/img/clip.mp4" style="pointer-events:none"></video>');
+  const out = toPlainText('<video controls src="/img/clip.mp4"></video>');
   if (out !== "[/img/clip.mp4]") bad("video bracket", JSON.stringify(out));
-  else ok("[src] for video (ignores style attr)");
+  else ok("[src] for video");
 }
 
 
@@ -237,6 +239,22 @@ log("\n[11] drop filter: only image/video files are accepted");
   else ok("filters text/plain out");
 }
 
+
+log("\n[13] absoluteUrl: resolves relative and keeps absolute");
+{
+  const cases = [
+    ["/img/foo.png", "http://localhost:8787/img/foo.png"],
+    ["img/foo.png", "http://localhost:8787/img/foo.png"],
+    ["https://notepad.blp.sh/img/x.png", "https://notepad.blp.sh/img/x.png"],
+    ["https://image.png/", "https://image.png/"],
+  ];
+  let good = true;
+  for (const [inp, want] of cases) {
+    const got = absoluteUrl(inp);
+    if (got !== want) { bad(`absoluteUrl(${JSON.stringify(inp)})`, `${got} want ${want}`); good = false; }
+  }
+  if (good) ok("resolves against location, never fabricates");
+}
 
 log("\n[12] New button: opens a new tab at the root URL");
 {
