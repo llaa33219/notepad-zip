@@ -339,55 +339,60 @@ export default function run() {
     return d;
   }
 
-  // Copy an image by selecting it and dispatching copy. The browser's own
-  // copy pipeline then writes image/png to the clipboard — the same code
-  // path as Ctrl+C on a selected image, which works in both Firefox and
-  // Chromium without ClipboardItem support or CORS-tainted fetches.
-  function selectNode(el) {
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNode(el);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
-
-  function copyImageToClipboard(el) {
-    const fallbackUrl = absoluteUrl(el.getAttribute("src") || el.src || "");
-    const sel = window.getSelection();
-    const saved = [];
-    for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
+  // Copy the actual image bytes. Called synchronously from the menu click
+  // handler so the user-activation window is still open; the blob promise
+  // handed to ClipboardItem resolves while the browser holds the clipboard
+  // transaction. Works in Chromium and Firefox (>=127 with the async
+  // clipboard pref). Falls back to rich HTML via execCommand when the async
+  // path is unavailable.
+  async function copyImageToClipboard(el) {
+    const abs = absoluteUrl(el.getAttribute("src") || el.src || "");
+    const pngPromise = (async () => {
+      const res = await fetch(abs);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      const blob = await res.blob();
+      if (blob.type === "image/png") return blob;
+      const bmp = await createImageBitmap(blob);
+      try {
+        const c = document.createElement("canvas");
+        c.width = bmp.width; c.height = bmp.height;
+        c.getContext("2d").drawImage(bmp, 0, 0);
+        return await new Promise((res2, rej) => c.toBlob((b) => b ? res2(b) : rej(new Error("toBlob null")), "image/png"));
+      } finally { bmp.close(); }
+    })();
     try {
-      selectNode(el);
-      const ok = document.execCommand("copy");
-      setStatus(ok ? "Image copied" : "Copy failed");
+      if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
+        // image/png alone is silently dropped in Firefox headless/testing and
+        // some paste targets only look at text/html; ship all three so one
+        // of them always lands.
+        await navigator.clipboard.write([new ClipboardItem({
+          "image/png": pngPromise,
+          "text/html": new Blob([`<img src="${abs.replace(/"/g, "&quot;")}" alt="">`], { type: "text/html" }),
+          "text/plain": new Blob([`[${abs}]`], { type: "text/plain" }),
+        })]);
+        setStatus("Image copied");
+      } else {
+        throw new Error("async clipboard unavailable");
+      }
     } catch {
-      setStatus("Copy failed");
+      // Fallback: select the node and execCommand("copy"). The copy event
+      // handler below writes text/html + text/plain so the paste target
+      // still gets the image tag or URL instead of the alt text.
+      const sel = window.getSelection();
+      const saved = [];
+      for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
+      const r = document.createRange();
+      r.selectNode(el);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      const ok = document.execCommand("copy");
+      sel.removeAllRanges();
+      for (const rr of saved) sel.addRange(rr);
+      setStatus(ok ? "Copied image (as link markup)" : "Copy failed");
     }
-    // Restore previous selection
-    sel.removeAllRanges();
-    for (const r of saved) sel.addRange(r);
     setTimeout(() => setStatus("Saved"), 2000);
   }
 
-  // copy event: selection contains an img/video -> write text/html with
-  // the <img> tag and a plain-text [url] fallback, so pasting into another
-  // app embeds the image instead of its alt text ("image.png").
-  document.addEventListener("copy", (ev) => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const frag = sel.getRangeAt(0).cloneContents();
-    const media = frag.querySelector && frag.querySelector("img, video");
-    if (!media) return;
-    const src = absoluteUrl(media.getAttribute("src") || "");
-    if (ev.clipboardData) {
-      const tag = media.tagName.toLowerCase() === "video"
-        ? `<video controls src="${src.replace(/"/g, "&quot;")}"></video>`
-        : `<img src="${src.replace(/"/g, "&quot;")}" alt="">`;
-      ev.clipboardData.setData("text/html", tag);
-      ev.clipboardData.setData("text/plain", `[${src}]`);
-      ev.preventDefault();
-    }
-  });
 
   function showCtxMenu(x, y, items) {
     ctxMenu.textContent = "";
