@@ -327,6 +327,27 @@ export default function run() {
     // Do NOT preventDefault: the browser's native context menu follows.
   });
 
+  // Some targets (Firefox's native "Copy Image" writes image/png to the OS
+  // clipboard but web-page paste handlers only see text/html) benefit from
+  // the copy event also carrying an absolute-URL <img> tag. We let the
+  // browser keep its image/png payload and just ensure text/html is present.
+  editor.addEventListener("copy", (ev) => {
+    if (!ev.clipboardData) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const frag = sel.getRangeAt(0).cloneContents();
+    const media = frag.querySelector && frag.querySelector("img, video");
+    if (!media) return;
+    const src = absoluteUrl(media.getAttribute("src") || "");
+    if (!src) return;
+    ev.clipboardData.setData(
+      "text/html",
+      `<img src="${src.replace(/"/g, "&quot;")}" alt="">`,
+    );
+    // Deliberately no preventDefault: keep whatever image/png etc. the
+    // browser put on the clipboard.
+  });
+
   copyBtn.addEventListener("click", async () => {
     const html = serialize(editor);
     const plain = toPlainText(html);
