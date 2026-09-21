@@ -318,29 +318,17 @@ export default function run() {
   // browser holds the clipboard transaction.
   async function copyImageBytes(el) {
     const abs = absoluteUrl(el.getAttribute("src") || el.src || "");
+    // Draw the already-decoded <img> to a canvas (works for png/jpg/webp/svg
+    // alike — if the browser can display it, it can rasterize it) and hand
+    // ClipboardItem a promise. Resolving inside the click's user-activation
+    // window avoids the NotAllowedError that awaits-first code hits.
     const blobPromise = (async () => {
-      const res = await fetch(abs);
-      if (!res.ok) throw new Error(`fetch ${res.status}`);
-      const blob = await res.blob();
-      // GIF/WebP/JPEG decode fine via createImageBitmap; SVG does not
-      // (it has no intrinsic raster pixels). Fall back to drawing the
-      // already-loaded <img> element, which the browser has decoded.
-      if (blob.type === "image/png") return blob;
-      let bmp = null;
-      try { bmp = await createImageBitmap(blob); } catch { bmp = null; }
+      await el.decode().catch(() => {});
+      const w = el.naturalWidth || 1;
+      const h = el.naturalHeight || 1;
       const c = document.createElement("canvas");
-      const ctx = c.getContext("2d");
-      if (bmp) {
-        c.width = bmp.width; c.height = bmp.height;
-        ctx.drawImage(bmp, 0, 0);
-        bmp.close();
-      } else {
-        await el.decode().catch(() => {});
-        const w = el.naturalWidth || 1;
-        const h = el.naturalHeight || 1;
-        c.width = w; c.height = h;
-        ctx.drawImage(el, 0, 0, w, h);
-      }
+      c.width = w; c.height = h;
+      c.getContext("2d").drawImage(el, 0, 0, w, h);
       return await new Promise((res2, rej) => c.toBlob((b) => b ? res2(b) : rej(new Error("toBlob null")), "image/png"));
     })();
     if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
