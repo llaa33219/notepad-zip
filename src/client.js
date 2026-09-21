@@ -322,14 +322,26 @@ export default function run() {
       const res = await fetch(abs);
       if (!res.ok) throw new Error(`fetch ${res.status}`);
       const blob = await res.blob();
+      // GIF/WebP/JPEG decode fine via createImageBitmap; SVG does not
+      // (it has no intrinsic raster pixels). Fall back to drawing the
+      // already-loaded <img> element, which the browser has decoded.
       if (blob.type === "image/png") return blob;
-      const bmp = await createImageBitmap(blob);
-      try {
-        const c = document.createElement("canvas");
+      let bmp = null;
+      try { bmp = await createImageBitmap(blob); } catch { bmp = null; }
+      const c = document.createElement("canvas");
+      const ctx = c.getContext("2d");
+      if (bmp) {
         c.width = bmp.width; c.height = bmp.height;
-        c.getContext("2d").drawImage(bmp, 0, 0);
-        return await new Promise((res2, rej) => c.toBlob((b) => b ? res2(b) : rej(new Error("toBlob null")), "image/png"));
-      } finally { bmp.close(); }
+        ctx.drawImage(bmp, 0, 0);
+        bmp.close();
+      } else {
+        await el.decode().catch(() => {});
+        const w = el.naturalWidth || 1;
+        const h = el.naturalHeight || 1;
+        c.width = w; c.height = h;
+        ctx.drawImage(el, 0, 0, w, h);
+      }
+      return await new Promise((res2, rej) => c.toBlob((b) => b ? res2(b) : rej(new Error("toBlob null")), "image/png"));
     })();
     if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
