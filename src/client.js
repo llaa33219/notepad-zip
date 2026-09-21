@@ -347,17 +347,99 @@ export default function run() {
     setTimeout(() => setStatus("Saved"), 2000);
   });
 
-  // Right-click on media: select it and let the browser show its native
-  // image/video context menu (Open in New Tab, Copy Image, Copy Image Link).
+  // ---------- custom context menu ----------
+  // The native contenteditable context menu does not expose image actions,
+  // and the browser's image menu inside an editable area is unreliable.
+  // We take over right-click inside the editor.
+  const ctxMenu = document.getElementById("ctx-menu");
+  let ctxTarget = null;
+
+  function hideCtxMenu() {
+    ctxMenu.classList.remove("open");
+    ctxMenu.hidden = true;
+    ctxTarget = null;
+  }
+
+  function ctxItem(label, onClick, disabled) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    if (disabled) b.disabled = true;
+    else b.addEventListener("click", () => { hideCtxMenu(); onClick(); });
+    return b;
+  }
+  function ctxSep() {
+    const d = document.createElement("div");
+    d.className = "sep";
+    return d;
+  }
+
+  function showCtxMenu(x, y, items) {
+    ctxMenu.textContent = "";
+    for (const it of items) ctxMenu.appendChild(it);
+    ctxMenu.hidden = false;
+    ctxMenu.classList.add("open");
+    const r = ctxMenu.getBoundingClientRect();
+    const px = Math.max(4, Math.min(x, window.innerWidth - r.width - 4));
+    const py = Math.max(4, Math.min(y, window.innerHeight - r.height - 4));
+    ctxMenu.style.left = px + "px";
+    ctxMenu.style.top = py + "px";
+  }
+
   editor.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
     const t = ev.target;
-    if (!t || (t.tagName !== "IMG" && t.tagName !== "VIDEO")) return;
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNode(t);
-    sel.removeAllRanges();
-    sel.addRange(range);
+    if (t && (t.tagName === "IMG" || t.tagName === "VIDEO")) {
+      ctxTarget = t;
+      const isImg = t.tagName === "IMG";
+      const abs = absoluteUrl(t.getAttribute("src") || t.currentSrc || "");
+      const noun = isImg ? "Image" : "Video";
+      showCtxMenu(ev.clientX, ev.clientY, [
+        ctxItem("Copy Link", async () => {
+          const ok = await copyToClipboard(abs);
+          setStatus(ok ? "Link copied" : "Copy failed");
+          setTimeout(() => setStatus("Saved"), 1500);
+        }),
+        ctxItem(`Open ${noun} in New Tab`, () => window.open(abs, "_blank", "noopener")),
+        ...(isImg ? [ctxItem("Copy Image", () => copyImageBytes(t).catch((e) => setStatus(`Image copy failed: ${(e && e.message) || e}`)))] : []),
+        ctxItem(`Copy ${noun} Address`, async () => {
+          const ok = await copyToClipboard(abs);
+          setStatus(ok ? "Copied" : "Copy failed");
+          setTimeout(() => setStatus("Saved"), 1500);
+        }),
+        ctxItem(`Save ${noun} As…`, () => {
+          const a = document.createElement("a");
+          a.href = abs;
+          try { a.download = abs.split("/").pop() || "media"; } catch {}
+          a.rel = "noopener";
+          a.target = "_blank";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }),
+        ctxSep(),
+        ctxItem("Select All", () => { document.execCommand("selectAll"); }),
+      ]);
+      return;
+    }
+    showCtxMenu(ev.clientX, ev.clientY, [
+      ctxItem("Cut", () => { document.execCommand("cut"); }),
+      ctxItem("Copy", () => { document.execCommand("copy"); }),
+      ctxItem("Paste", () => { document.execCommand("paste"); }),
+      ctxSep(),
+      ctxItem("Select All", () => { document.execCommand("selectAll"); }),
+    ]);
   });
+
+  document.addEventListener("click", (ev) => {
+    if (ctxMenu.classList.contains("open") && !ctxMenu.contains(ev.target)) hideCtxMenu();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && ctxMenu.classList.contains("open")) hideCtxMenu();
+  });
+  window.addEventListener("blur", hideCtxMenu);
+  window.addEventListener("resize", hideCtxMenu);
+  editor.addEventListener("scroll", hideCtxMenu);
 
   copyBtn.addEventListener("click", async () => {
     const html = serialize(editor);

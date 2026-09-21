@@ -87,6 +87,26 @@ export function htmlShell({ id, origin }: Vars): string {
   .editor video[data-uploading="1"] { opacity: 0.35; }
   .editor img[data-failed="1"],
   .editor video[data-failed="1"]    { outline: 2px solid #c33; }
+  #ctx-menu {
+    position: fixed; z-index: 9999; min-width: 220px;
+    background: #fff; border: 1px solid #d4d4d8; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 4px;
+    font-size: 13px; display: none;
+  }
+  #ctx-menu.open { display: block; }
+  #ctx-menu button {
+    display: block; width: 100%; text-align: left; appearance: none;
+    border: 0; background: none; color: inherit;
+    padding: 6px 12px; border-radius: 5px; cursor: pointer; font-size: 13px;
+  }
+  #ctx-menu button:hover:not(:disabled) { background: #f0f0f2; }
+  #ctx-menu button:disabled { color: #a1a1aa; cursor: default; }
+  #ctx-menu .sep { height: 1px; background: #e5e5ea; margin: 4px 8px; }
+  @media (prefers-color-scheme: dark) {
+    #ctx-menu { background: #1d1d20; border-color: #2a2a2e; }
+    #ctx-menu button:hover:not(:disabled) { background: #26262a; }
+    #ctx-menu .sep { background: #26262a; }
+  }
 </style>
 </head>
 <body>
@@ -107,6 +127,7 @@ export function htmlShell({ id, origin }: Vars): string {
       data-placeholder="Type something&hellip;"
     ></div>
   </div>
+  <div id="ctx-menu" role="menu" hidden></div>
   <script>
     window.__NOTEPAD__ = ${JSON.stringify({ id, origin })};
   </script>
