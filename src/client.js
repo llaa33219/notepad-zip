@@ -311,159 +311,21 @@ export default function run() {
     }
   });
 
-  // ---------- custom context menu ----------
-  // The native contenteditable context menu does not expose image actions
-  // (open in new tab / copy image), and its "copy link" serializes relative
-  // URLs against a bogus base (https://image.png/). We take over right-click
-  // inside the editor and show our own menu.
-  const ctxMenu = document.getElementById("ctx-menu");
-  let ctxTarget = null; // img/video element the menu was opened for
-
-  function hideCtxMenu() {
-    ctxMenu.classList.remove("open");
-    ctxMenu.hidden = true;
-    ctxTarget = null;
-  }
-
-  function ctxItem(label, onClick, disabled) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = label;
-    if (disabled) b.disabled = true;
-    else b.addEventListener("click", () => { hideCtxMenu(); onClick(); });
-    return b;
-  }
-  function ctxSep() {
-    const d = document.createElement("div");
-    d.className = "sep";
-    return d;
-  }
-
-  // Copy the actual image bytes. Called synchronously from the menu click
-  // handler so the user-activation window is still open; the blob promise
-  // handed to ClipboardItem resolves while the browser holds the clipboard
-  // transaction. Works in Chromium and Firefox (>=127 with the async
-  // clipboard pref). Falls back to rich HTML via execCommand when the async
-  // path is unavailable.
-  async function copyImageToClipboard(el) {
-    const abs = absoluteUrl(el.getAttribute("src") || el.src || "");
-    const pngPromise = (async () => {
-      const res = await fetch(abs);
-      if (!res.ok) throw new Error(`fetch ${res.status}`);
-      const blob = await res.blob();
-      if (blob.type === "image/png") return blob;
-      const bmp = await createImageBitmap(blob);
-      try {
-        const c = document.createElement("canvas");
-        c.width = bmp.width; c.height = bmp.height;
-        c.getContext("2d").drawImage(bmp, 0, 0);
-        return await new Promise((res2, rej) => c.toBlob((b) => b ? res2(b) : rej(new Error("toBlob null")), "image/png"));
-      } finally { bmp.close(); }
-    })();
-    try {
-      if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
-        // image/png alone is silently dropped in Firefox headless/testing and
-        // some paste targets only look at text/html; ship all three so one
-        // of them always lands.
-        await navigator.clipboard.write([new ClipboardItem({
-          "image/png": pngPromise,
-          "text/html": new Blob([`<img src="${abs.replace(/"/g, "&quot;")}" alt="">`], { type: "text/html" }),
-          "text/plain": new Blob([`[${abs}]`], { type: "text/plain" }),
-        })]);
-        setStatus("Image copied");
-      } else {
-        throw new Error("async clipboard unavailable");
-      }
-    } catch {
-      // Fallback: select the node and execCommand("copy"). The copy event
-      // handler below writes text/html + text/plain so the paste target
-      // still gets the image tag or URL instead of the alt text.
-      const sel = window.getSelection();
-      const saved = [];
-      for (let i = 0; i < sel.rangeCount; i++) saved.push(sel.getRangeAt(i).cloneRange());
-      const r = document.createRange();
-      r.selectNode(el);
-      sel.removeAllRanges();
-      sel.addRange(r);
-      const ok = document.execCommand("copy");
-      sel.removeAllRanges();
-      for (const rr of saved) sel.addRange(rr);
-      setStatus(ok ? "Copied image (as link markup)" : "Copy failed");
-    }
-    setTimeout(() => setStatus("Saved"), 2000);
-  }
-
-
-  function showCtxMenu(x, y, items) {
-    ctxMenu.textContent = "";
-    for (const it of items) ctxMenu.appendChild(it);
-    ctxMenu.hidden = false;
-    ctxMenu.classList.add("open");
-    // Clamp to viewport
-    const r = ctxMenu.getBoundingClientRect();
-    const px = Math.max(4, Math.min(x, window.innerWidth - r.width - 4));
-    const py = Math.max(4, Math.min(y, window.innerHeight - r.height - 4));
-    ctxMenu.style.left = px + "px";
-    ctxMenu.style.top = py + "px";
-  }
-
+  // Right-click on media: select the media element and let the browser
+  // show its native image/video context menu (Open in New Tab, Copy Image,
+  // Copy Image Link, Save As). Firefox's contenteditable menu lacks those
+  // actions; a selection on the media makes the native menu treat it as a
+  // media target. No custom menu, no ClipboardItem, no execCommand tricks.
   editor.addEventListener("contextmenu", (ev) => {
-    ev.preventDefault();
     const t = ev.target;
-    if (t && (t.tagName === "IMG" || t.tagName === "VIDEO")) {
-      ctxTarget = t;
-      const isImg = t.tagName === "IMG";
-      const abs = absoluteUrl(t.getAttribute("src") || t.currentSrc || "");
-      const noun = isImg ? "Image" : "Video";
-      showCtxMenu(ev.clientX, ev.clientY, [
-        ctxItem(`Copy Link`, async () => {
-          const ok = await copyToClipboard(abs);
-          setStatus(ok ? "Link copied" : "Copy failed");
-          setTimeout(() => setStatus("Saved"), 1500);
-        }),
-        ctxItem(`Open ${noun} in New Tab`, () => window.open(abs, "_blank", "noopener")),
-        ...(isImg
-          ? [ctxItem("Copy Image", () => copyImageToClipboard(t))]
-          : []),
-        ctxItem(`Copy ${noun} Address`, async () => {
-          const ok = await copyToClipboard(abs);
-          setStatus(ok ? "Copied" : "Copy failed");
-          setTimeout(() => setStatus("Saved"), 1500);
-        }),
-        ctxItem(`Save ${noun} As…`, () => {
-          const a = document.createElement("a");
-          a.href = abs;
-          try { a.download = abs.split("/").pop() || "media"; } catch {}
-          a.rel = "noopener";
-          a.target = "_blank";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }),
-        ctxSep(),
-        ctxItem("Select All", () => { document.execCommand("selectAll"); }),
-      ]);
-      return;
-    }
-    // Plain text area
-    showCtxMenu(ev.clientX, ev.clientY, [
-      ctxItem("Cut", () => { document.execCommand("cut"); }),
-      ctxItem("Copy", () => { document.execCommand("copy"); }),
-      ctxItem("Paste", () => { document.execCommand("paste"); }),
-      ctxSep(),
-      ctxItem("Select All", () => { document.execCommand("selectAll"); }),
-    ]);
+    if (!t || (t.tagName !== "IMG" && t.tagName !== "VIDEO")) return;
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNode(t);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    // Do NOT preventDefault: the browser's native context menu follows.
   });
-
-  document.addEventListener("click", (ev) => {
-    if (ctxMenu.classList.contains("open") && !ctxMenu.contains(ev.target)) hideCtxMenu();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape" && ctxMenu.classList.contains("open")) hideCtxMenu();
-  });
-  window.addEventListener("blur", hideCtxMenu);
-  window.addEventListener("resize", hideCtxMenu);
-  editor.addEventListener("scroll", hideCtxMenu);
 
   copyBtn.addEventListener("click", async () => {
     const html = serialize(editor);
