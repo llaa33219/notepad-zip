@@ -311,11 +311,44 @@ export default function run() {
     }
   });
 
-  // Right-click on media: select the media element and let the browser
-  // show its native image/video context menu (Open in New Tab, Copy Image,
-  // Copy Image Link, Save As). Firefox's contenteditable menu lacks those
-  // actions; a selection on the media makes the native menu treat it as a
-  // media target. No custom menu, no ClipboardItem, no execCommand tricks.
+  // Media double-click copies the image bytes to the clipboard (the same
+  // fetch->blob->ClipboardItem pattern other sites use). Must be called
+  // synchronously from the click handler so the user-activation window is
+  // still open; the blob promise handed to ClipboardItem resolves while the
+  // browser holds the clipboard transaction.
+  async function copyImageBytes(el) {
+    const abs = absoluteUrl(el.getAttribute("src") || el.src || "");
+    const blobPromise = (async () => {
+      const res = await fetch(abs);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      const blob = await res.blob();
+      if (blob.type === "image/png") return blob;
+      const bmp = await createImageBitmap(blob);
+      try {
+        const c = document.createElement("canvas");
+        c.width = bmp.width; c.height = bmp.height;
+        c.getContext("2d").drawImage(bmp, 0, 0);
+        return await new Promise((res2, rej) => c.toBlob((b) => b ? res2(b) : rej(new Error("toBlob null")), "image/png"));
+      } finally { bmp.close(); }
+    })();
+    if (navigator.clipboard && typeof ClipboardItem === "function" && window.isSecureContext) {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blobPromise })]);
+      setStatus("Image copied");
+    } else {
+      throw new Error("async clipboard unavailable");
+    }
+  }
+
+  editor.addEventListener("dblclick", (ev) => {
+    const t = ev.target;
+    if (!t || t.tagName !== "IMG") return;
+    ev.preventDefault();
+    copyImageBytes(t).catch((e) => setStatus(`Image copy failed: ${(e && e.message) || e}`));
+    setTimeout(() => setStatus("Saved"), 2000);
+  });
+
+  // Right-click on media: select it and let the browser show its native
+  // image/video context menu (Open in New Tab, Copy Image, Copy Image Link).
   editor.addEventListener("contextmenu", (ev) => {
     const t = ev.target;
     if (!t || (t.tagName !== "IMG" && t.tagName !== "VIDEO")) return;
@@ -324,28 +357,6 @@ export default function run() {
     range.selectNode(t);
     sel.removeAllRanges();
     sel.addRange(range);
-    // Do NOT preventDefault: the browser's native context menu follows.
-  });
-
-  // Some targets (Firefox's native "Copy Image" writes image/png to the OS
-  // clipboard but web-page paste handlers only see text/html) benefit from
-  // the copy event also carrying an absolute-URL <img> tag. We let the
-  // browser keep its image/png payload and just ensure text/html is present.
-  editor.addEventListener("copy", (ev) => {
-    if (!ev.clipboardData) return;
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const frag = sel.getRangeAt(0).cloneContents();
-    const media = frag.querySelector && frag.querySelector("img, video");
-    if (!media) return;
-    const src = absoluteUrl(media.getAttribute("src") || "");
-    if (!src) return;
-    ev.clipboardData.setData(
-      "text/html",
-      `<img src="${src.replace(/"/g, "&quot;")}" alt="">`,
-    );
-    // Deliberately no preventDefault: keep whatever image/png etc. the
-    // browser put on the clipboard.
   });
 
   copyBtn.addEventListener("click", async () => {
